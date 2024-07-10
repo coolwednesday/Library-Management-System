@@ -1,23 +1,70 @@
 package main
 
-/*
-Library Management SystemRequirements:
-Books Management:
-Each book has a title, author, and a unique ISBN.
-Books can be added, removed, and listed.
-User Management:
-Each user has a name and a unique ID.
-Users can be added, removed, and listed.
-Borrowing and Returning Books:
-Users can borrow books if they are available.
-Users can return books.
-More than one user cannot borrow a book at a time.
-Concurrency:
-Ensure thread safety when multiple users are borrowing and returning books simultaneously.
-Error Handling:
-Proper error messages should be returned when operations fail (e.g., borrowing a non-existent book, returning a book not borrowed).
-*/
+import (
+	"awesomeProject/books"
+	"awesomeProject/users"
+	"fmt"
+	"sync"
+	"time"
+)
 
 func main() {
+	v := []users.User{} // Empty List of Users
+	v1, err := users.AddUsers(v, "Divya", 1234)
+	if err != nil {
+		fmt.Println(err)
+	}
+	_, err = users.AddUsers(v1, "Jack", 1345)
+	if err != nil {
+		fmt.Println(err)
+	}
 
+	b := []books.Book{} // Empty List of Books
+	b1, err := books.AddBooks(b, 1234, "Book1", "author1")
+	if err != nil {
+		fmt.Println(err)
+	}
+	b2, err := books.AddBooks(b1, 1456, "Book2", "author4")
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	lend := make(map[int]int)
+	lend[1234] = 1234
+
+	ch := make(chan struct{}, 1) // Unbuffered channel for synchronization
+	var wg sync.WaitGroup
+	wg.Add(2) // Increase the WaitGroup count for two goroutines
+	// Start the synchronization by sending a signal to the channel
+	ch <- struct{}{}
+	go func() {
+		time.Sleep(2 * time.Second)
+		defer wg.Done()
+		<-ch // Wait for signal to proceed
+		fmt.Println("BorrowBook can be processed")
+		v, err := books.BorrowBook(b2, lend, 1456, 1234)
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			fmt.Println(v, "BorrowBook successfully processed")
+		}
+		// Signal completion to allow ReturnBook to proceed
+		ch <- struct{}{}
+	}()
+
+	go func() {
+		defer wg.Done()
+		<-ch // Wait for BorrowBook to complete
+		fmt.Println("ReturnBook can be processed")
+		v, err := books.ReturnBook(b2, lend, 1234, 1234)
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			fmt.Println(v, "ReturnBook successfully processed")
+		}
+		ch <- struct{}{}
+	}()
+
+	wg.Wait()
+	close(ch) // Close the channel once synchronization is done (optional, but recommended)
 }

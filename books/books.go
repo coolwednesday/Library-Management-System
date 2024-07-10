@@ -9,13 +9,14 @@ Books Management:
 Each book has a title, author, and a unique ISBN.
 Books can be added, removed, and listed.
 */
-
+//Book Structure
 type Book struct {
 	title  string
 	author string
 	ISBN   int
 }
 
+// AddBooks Function takes the list of present Books and details of the new book to be added and returns new list of availible books and error message
 func AddBooks(existing []Book, ISBN int, title, author string) ([]Book, error) {
 	for _, book := range existing {
 		if book.ISBN == ISBN {
@@ -31,6 +32,7 @@ func AddBooks(existing []Book, ISBN int, title, author string) ([]Book, error) {
 	return existing, nil
 }
 
+// RemoveBook Function takes list of present books and ISBN of the book t be removed and returns modified list of existing Books and error if any
 func RemoveBook(existing []Book, ISBN int) ([]Book, error) {
 
 	if len(existing) == 0 {
@@ -46,6 +48,7 @@ func RemoveBook(existing []Book, ISBN int) ([]Book, error) {
 
 }
 
+// ListBook takes the existing Books and the title of book being searched and returns error
 func ListBook(existing []Book, title string) ([]Book, error) {
 
 	if len(existing) == 0 {
@@ -66,6 +69,7 @@ func ListBook(existing []Book, title string) ([]Book, error) {
 
 }
 
+// BorrowBook takes the list of existing books and a map that maps ISBN of book and id of user and returns Book borrowed and error if any
 func BorrowBook(existing []Book, m map[int]int, ISBN, id int) (Book, error) {
 
 	if len(existing) == 0 {
@@ -86,6 +90,7 @@ func BorrowBook(existing []Book, m map[int]int, ISBN, id int) (Book, error) {
 
 }
 
+// ReturnBook takes the list of availible Books and map that maps book ISBN to user id  and returns update as a string and error if any
 func ReturnBook(existing []Book, m map[int]int, ISBN, id int) (string, error) {
 	if len(existing) == 0 {
 		return "", fmt.Errorf("No Books Registered. Cannot Return")
