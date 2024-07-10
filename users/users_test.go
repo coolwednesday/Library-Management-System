@@ -21,14 +21,14 @@ func TestAddUsers(t *testing.T) {
 		output res
 	}{{name: "No User is present",
 		input:  req{User{name: "User1", id: 1234}, []User{}},
-		output: res{[]User{{name: "User1", id: 1234}}, errors.New("")},
+		output: res{[]User{{name: "User1", id: 1234}}, nil},
 	},
 		{name: "Adding new User",
 			input: req{User{name: "User2", id: 1345}, []User{
 				{name: "User1", id: 1234},
 			}},
 			output: res{[]User{{name: "User1", id: 1234},
-				{name: "User2", id: 1345}}, errors.New("")},
+				{name: "User2", id: 1345}}, nil},
 		},
 		{name: "Adding same User",
 			input: req{User{name: "User2", id: 1345}, []User{
@@ -36,10 +36,10 @@ func TestAddUsers(t *testing.T) {
 				{name: "User2", id: 1345},
 			}},
 			output: res{[]User{{name: "User1", id: 1234},
-				{name: "User2", id: 1345}}, errors.New("User Already Added")},
+				{name: "User2", id: 1345}}, errors.New("User already exists")},
 		},
 		{name: "Adding User with same name",
-			input: req{User{name: "Book1", id: 1567}, []User{
+			input: req{User{name: "User1", id: 1567}, []User{
 				{name: "User1", id: 1234},
 				{name: "User2", id: 1345},
 			}},
@@ -47,7 +47,7 @@ func TestAddUsers(t *testing.T) {
 				{name: "User1", id: 1234},
 				{name: "User2", id: 1345},
 				{name: "User1", id: 1567},
-			}, errors.New("")},
+			}, nil},
 		},
 		{name: "Adding User with duplicate id",
 			input: req{User{name: "User4", id: 1567}, []User{
@@ -59,7 +59,7 @@ func TestAddUsers(t *testing.T) {
 				{name: "User1", id: 1234},
 				{name: "User2", id: 1345},
 				{name: "User1", id: 1567},
-			}, errors.New("User with the same id already exists")},
+			}, errors.New("User with 1567 id already exists.Try Again")},
 		},
 	}
 
@@ -86,7 +86,7 @@ func TestRemoveUser(t *testing.T) {
 	}{
 		{name: "No User is present",
 			input:  req{1234, []User{}},
-			output: res{[]User{}, errors.New("No Books are present")},
+			output: res{[]User{}, errors.New("No Users are present")},
 		},
 		{name: "Removing User",
 			input: req{1234, []User{
@@ -95,7 +95,7 @@ func TestRemoveUser(t *testing.T) {
 			}},
 			output: res{[]User{
 				{name: "User2", id: 1345},
-			}, errors.New("")},
+			}, nil},
 		},
 		{name: "User is not present",
 			input: req{1900, []User{
@@ -141,7 +141,7 @@ func TestListUser(t *testing.T) {
 				{name: "User2", id: 1345},
 				{name: "User1", id: 1567},
 			}},
-			output: res{User{name: "User1", id: 1234}, errors.New("")},
+			output: res{User{name: "User1", id: 1234}, nil},
 		},
 		{name: "User is not present",
 			input: req{1679, []User{

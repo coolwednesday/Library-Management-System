@@ -16,7 +16,7 @@ func AddUsers(existing []User, name string, id int) ([]User, error) {
 			return existing, fmt.Errorf("User with %v id already exists.Try Again", id)
 		}
 	}
-	existing = append(existing, User{name, string})
+	existing = append(existing, User{name, id})
 	return existing, nil
 }
 
