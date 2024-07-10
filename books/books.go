@@ -52,7 +52,7 @@ func ListBook(existing []Book, title string) ([]Book, error) {
 		return existing, fmt.Errorf("No Books are present")
 	}
 	k := 0
-	var s = make([]Book, len(existing))
+	var s = make([]Book, 0)
 	for _, book := range existing {
 		if book.title == title {
 			s = append(s, book)
@@ -60,9 +60,9 @@ func ListBook(existing []Book, title string) ([]Book, error) {
 		}
 	}
 	if k > 0 {
-		return existing, nil
+		return s, nil
 	}
-	return existing, fmt.Errorf("Book Not Found")
+	return []Book{}, fmt.Errorf("Book Not Found")
 
 }
 
@@ -93,7 +93,7 @@ func ReturnBook(existing []Book, m map[int]int, ISBN, id int) (string, error) {
 	_, ok := m[ISBN]
 	if ok {
 		delete(m, ISBN)
-		return "Book Returned Successfully", fmt.Errorf("Book already Borrowed")
+		return "Book Returned Successfully", nil
 	}
 	return "", fmt.Errorf("Book Not Registered")
 }
