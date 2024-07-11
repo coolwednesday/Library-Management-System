@@ -6,15 +6,6 @@ import (
 	"testing"
 )
 
-// AddUserHelper calls the AddUser method after creating a struct of User type
-func AddUsersHelper(existing []User, name string, id int) ([]User, error) {
-	u := User{
-		name: name,
-		id:   id,
-	}
-	return u.AddUsers(existing)
-}
-
 // TestAddUsers function tests for all inputs in form of req type and res type as output
 func TestAddUsers(t *testing.T) {
 

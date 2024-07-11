@@ -8,6 +8,15 @@ type User struct {
 	id   int
 }
 
+// AddUserHelper calls the AddUser method after creating a struct of User type
+func AddUsersHelper(existing []User, name string, id int) ([]User, error) {
+	u := User{
+		name: name,
+		id:   id,
+	}
+	return u.AddUsers(existing)
+}
+
 // AddUser method add the User into existing list of users and return the modifies list and error if any
 func (u User) AddUsers(existing []User) ([]User, error) {
 	for _, user := range existing {
