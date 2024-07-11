@@ -6,15 +6,22 @@ import (
 	"testing"
 )
 
+// TestAddUsers function tests for all inputs in form of req type and res type as output
 func TestAddUsers(t *testing.T) {
+
+	//res struct defines output that has modifies slice of users as well as error if any
 	type res struct {
 		existing []User
 		err      error
 	}
+
+	//req struct defines input that has user as well as exiting slice of Users
 	type req struct {
 		user     User
 		existing []User
 	}
+
+	//testcases for AddUserHelper function
 	tests := []struct {
 		name   string
 		input  req
@@ -63,22 +70,30 @@ func TestAddUsers(t *testing.T) {
 		},
 	}
 
+	//checking for all test cases
 	for _, test := range tests {
-		v, err := AddUsers(test.input.existing, test.input.user.name, test.input.user.id)
+		v, err := AddUsersHelper(test.input.existing, test.input.user.name, test.input.user.id)
 		s := res{v, err}
 		assert.Equal(t, test.output, s)
 	}
 }
 
+// TestRemoveUser function tests for all inputs in form of req type and res type as output
 func TestRemoveUser(t *testing.T) {
+
+	//res struct defines the output that has existing users and error if any
 	type res struct {
 		existing []User
 		err      error
 	}
+
+	//req struct defines the input that has the id of user and existing users
 	type req struct {
 		id       int
 		existing []User
 	}
+
+	//testcases for RemoveUser method
 	tests := []struct {
 		name   string
 		input  req
@@ -111,22 +126,33 @@ func TestRemoveUser(t *testing.T) {
 		},
 	}
 
+	//creating empty struct for User type
+	u := User{}
+
+	//testing for all testcases
 	for _, test := range tests {
-		v, err := RemoveUser(test.input.existing, test.input.id)
+		v, err := u.RemoveUser(test.input.existing, test.input.id)
 		s := res{v, err}
 		assert.Equal(t, test.output, s)
 	}
 }
 
+// TestListUser function tests for all inputs in form of req type and res type as output
 func TestListUser(t *testing.T) {
+
+	//res struct type defines the response with found user and error if any
 	type res struct {
 		found User
 		err   error
 	}
+
+	//req struct type defines the id of user as well as the existing slice of User type
 	type req struct {
 		id       int
 		existing []User
 	}
+
+	//testcases for ListUser method
 	tests := []struct {
 		name   string
 		input  req
@@ -153,8 +179,12 @@ func TestListUser(t *testing.T) {
 		},
 	}
 
+	//creating an empty struct of User type
+	u := User{}
+
+	//testing for all test cases
 	for _, test := range tests {
-		v, err := ListUser(test.input.existing, test.input.id)
+		v, err := u.ListUser(test.input.existing, test.input.id)
 		s := res{v, err}
 		assert.Equal(t, test.output, s)
 	}

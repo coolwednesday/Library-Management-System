@@ -9,37 +9,47 @@ Books Management:
 Each book has a title, author, and a unique ISBN.
 Books can be added, removed, and listed.
 */
-//Book Structure
+
+// Book Structure
 type Book struct {
 	title  string
 	author string
-	ISBN   int
+	isbn   int
+}
+
+func AddBooksHelper(existingBooks []Book, ISBN int, title, author string) ([]Book, error) {
+	b := Book{
+		title:  title,
+		author: author,
+		isbn:   ISBN,
+	}
+	return b.AddBooks(existingBooks)
 }
 
 // AddBooks Function takes the list of present Books and details of the new book to be added and returns new list of availible books and error message
-func AddBooks(existing []Book, ISBN int, title, author string) ([]Book, error) {
+func (b Book) AddBooks(existing []Book) ([]Book, error) {
 	for _, book := range existing {
-		if book.ISBN == ISBN {
-			if book.title == title {
-				if book.author == author {
+		if book.isbn == b.isbn {
+			if book.title == b.title {
+				if book.author == b.author {
 					return existing, fmt.Errorf("Book already exists")
 				}
 			}
-			return existing, fmt.Errorf("Book with %v ISBN already exists.Try Again", ISBN)
+			return existing, fmt.Errorf("Book with %v isbn already exists.Try Again", b.isbn)
 		}
 	}
-	existing = append(existing, Book{title, author, ISBN})
+	existing = append(existing, b)
 	return existing, nil
 }
 
 // RemoveBook Function takes list of present books and ISBN of the book t be removed and returns modified list of existing Books and error if any
-func RemoveBook(existing []Book, ISBN int) ([]Book, error) {
+func (b Book) RemoveBook(existing []Book, ISBN int) ([]Book, error) {
 
 	if len(existing) == 0 {
 		return existing, fmt.Errorf("No Books are present")
 	}
 	for i, book := range existing {
-		if book.ISBN == ISBN {
+		if book.isbn == ISBN {
 			existing = append(existing[:i], existing[i+1:]...)
 			return existing, nil
 		}
@@ -49,7 +59,7 @@ func RemoveBook(existing []Book, ISBN int) ([]Book, error) {
 }
 
 // ListBook takes the existing Books and the title of book being searched and returns error
-func ListBook(existing []Book, title string) ([]Book, error) {
+func (b Book) ListBook(existing []Book, title string) ([]Book, error) {
 
 	if len(existing) == 0 {
 		return existing, fmt.Errorf("No Books are present")
@@ -70,7 +80,7 @@ func ListBook(existing []Book, title string) ([]Book, error) {
 }
 
 // BorrowBook takes the list of existing books and a map that maps ISBN of book and id of user and returns Book borrowed and error if any
-func BorrowBook(existing []Book, m map[int]int, ISBN, id int) (Book, error) {
+func (b Book) BorrowBook(existing []Book, m map[int]int, id, ISBN int) (Book, error) {
 
 	if len(existing) == 0 {
 		return Book{}, fmt.Errorf("No Books are present. Cannot Borrow")
@@ -81,7 +91,7 @@ func BorrowBook(existing []Book, m map[int]int, ISBN, id int) (Book, error) {
 		return Book{}, fmt.Errorf("Book Already borrowed")
 	}
 	for _, book := range existing {
-		if book.ISBN == ISBN {
+		if book.isbn == ISBN {
 			m[ISBN] = id
 			return book, nil
 		}
@@ -91,7 +101,7 @@ func BorrowBook(existing []Book, m map[int]int, ISBN, id int) (Book, error) {
 }
 
 // ReturnBook takes the list of availible Books and map that maps book ISBN to user id  and returns update as a string and error if any
-func ReturnBook(existing []Book, m map[int]int, ISBN, id int) (string, error) {
+func (b Book) ReturnBook(existing []Book, m map[int]int, ISBN int) (string, error) {
 	if len(existing) == 0 {
 		return "", fmt.Errorf("No Books Registered. Cannot Return")
 	}
