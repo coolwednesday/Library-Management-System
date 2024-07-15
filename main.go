@@ -1,8 +1,8 @@
 package main
 
 import (
+	"SimpleRESTApi/books"
 	"SimpleRESTApi/users"
-	"awesomeProject/SimpleRESTapi/books"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"log"
@@ -50,6 +50,7 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 
 // bookRentHandler function
 func bookRentHandler(w http.ResponseWriter, r *http.Request) {
+
 	switch r.Method {
 	case http.MethodGet:
 		books.BorrowBookHandler(w, r)
