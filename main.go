@@ -20,6 +20,7 @@ Write HTTP Tests for Them
 
 // userHandler function to route to the appropriate handler
 func userHandler(w http.ResponseWriter, r *http.Request) {
+	r.Header.Set("Content-Type", "application/json")
 	switch r.Method {
 	case http.MethodGet:
 		users.ListUserHandler(w, r)
@@ -35,6 +36,7 @@ func userHandler(w http.ResponseWriter, r *http.Request) {
 
 // bookHandler function to route to the appropriate route
 func bookHandler(w http.ResponseWriter, r *http.Request) {
+	r.Header.Set("Content-Type", "application/json")
 	switch r.Method {
 	case http.MethodGet:
 		books.ListBookHandler(w, r)
@@ -50,7 +52,7 @@ func bookHandler(w http.ResponseWriter, r *http.Request) {
 
 // bookRentHandler function
 func bookRentHandler(w http.ResponseWriter, r *http.Request) {
-
+	r.Header.Set("Content-Type", "application/json")
 	switch r.Method {
 	case http.MethodGet:
 		books.BorrowBookHandler(w, r)
