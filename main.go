@@ -2,8 +2,10 @@ package main
 
 import (
 	"SimpleRESTApi/books"
+	"database/sql"
+	"github.com/gorilla/mux"
+	//db "SimpleRESTApi/database_conn"
 	"SimpleRESTApi/users"
-	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"log"
 	"net/http"
@@ -18,62 +20,34 @@ REST APIS for Each Function
 Write HTTP Tests for Them
 */
 
-// userHandler function to route to the appropriate handler
-func userHandler(w http.ResponseWriter, r *http.Request) {
-	r.Header.Set("Content-Type", "application/json")
-	switch r.Method {
-	case http.MethodGet:
-		users.ListUserHandler(w, r)
-	case http.MethodPost:
-		users.AddUserHandler(w, r)
-	case http.MethodDelete:
-		users.RemoveUserHandler(w, r)
-	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte(fmt.Sprintf("HTTP method %q not allowed", r.Method)))
-	}
-}
-
-// bookHandler function to route to the appropriate route
-func bookHandler(w http.ResponseWriter, r *http.Request) {
-	r.Header.Set("Content-Type", "application/json")
-	switch r.Method {
-	case http.MethodGet:
-		books.ListBookHandler(w, r)
-	case http.MethodPost:
-		books.AddBookHandler(w, r)
-	case http.MethodPut:
-		books.RemoveBookHandler(w, r)
-	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte(fmt.Sprintf("HTTP method %q not allowed", r.Method)))
-	}
-}
-
-// bookRentHandler function
-func bookRentHandler(w http.ResponseWriter, r *http.Request) {
-	r.Header.Set("Content-Type", "application/json")
-	switch r.Method {
-	case http.MethodGet:
-		books.BorrowBookHandler(w, r)
-	case http.MethodPost:
-		books.ReturnBookHandler(w, r)
-	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte(fmt.Sprintf("HTTP method %q not allowed", r.Method)))
-	}
-}
-
 func main() {
+	r := mux.NewRouter()
 	//routes with base url : http://localhost:8080/
-	http.HandleFunc("/user", userHandler)
-	http.HandleFunc("/book", bookHandler)
-	http.HandleFunc("/book/all", books.ListAvailibleBooksHandler)
-	http.HandleFunc("/user/all", users.ListAllUsersHandler)
-	http.HandleFunc("/book/rent", bookRentHandler)
+	r.HandleFunc("/user", users.Add).Methods(http.MethodPost)
+	r.HandleFunc("/user/{id}", users.List).Methods(http.MethodGet)
+	r.HandleFunc("/user", users.ListAll).Methods(http.MethodGet)
+	r.HandleFunc("/user/{id}", users.Remove).Methods(http.MethodDelete)
+
+	r.HandleFunc("/book", books.Add).Methods(http.MethodPost)
+	r.HandleFunc("/book/{isbn}", books.Remove).Methods(http.MethodDelete)
+	r.HandleFunc("/book", books.ListAvailible).Methods(http.MethodGet)
+	r.HandleFunc("/book/{isbn}", books.List).Methods(http.MethodGet)
+	r.HandleFunc("/book/rent", books.Borrow).Methods(http.MethodPost)
+	r.HandleFunc("/book/rent/{isbn}", books.Return).Methods(http.MethodDelete)
+	http.Handle("/", r)
+
+	var err error
+	S, err := sql.Open("mysql", "root:1234@tcp(localhost:3306)/library")
+	if err != nil {
+		log.Println(err)
+	} else {
+		users.S = S
+		books.S = S
+		log.Println("Database connected")
+	}
 
 	//Connecting to Server
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	if err := http.ListenAndServe(":8080", r); err != nil {
 		log.Println(err)
 	} else {
 		log.Println("Server successfully started. Listening on port 8080")

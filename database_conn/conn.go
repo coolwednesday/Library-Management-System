@@ -37,12 +37,13 @@ func NewConnection() (*sql.DB, error) {
 
 	//Creating lendingRecords tables
 	/*
-		_, err = s.Exec(`CREATE TABLE lendingRecords(actionid int auto_increment primary key ,userid int not null,bookid int not null, foreign key (userid) references users(id), foreign key (bookid) references books(isbn))`)
-		if err != nil {
-			fmt.Println(err)
-		} else {
-			fmt.Println("Lending records table created")
-		}
+			_, err = s.Exec(`CREATE TABLE lendingRecords(actionid int auto_increment primary key ,userid int not null
+		,bookid int not null, foreign key (userid) references users(id), foreign key (bookid) references books(isbn))`)
+			if err != nil {
+				fmt.Println(err)
+			} else {
+				fmt.Println("Lending records table created")
+			}
 	*/
 
 	//Inserting Users in the Database in users table
@@ -97,7 +98,7 @@ func NewConnection() (*sql.DB, error) {
 		}
 	*/
 
-	/*Fetching All the books in Database
+	/* Fetching All the books in Database
 
 	list := []Book{}
 	rows, err := s.Query(`SELECT title,author,isbn FROM books`)

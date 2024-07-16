@@ -1,16 +1,19 @@
 package users
 
 import (
-	"SimpleRESTApi/database_conn"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/gorilla/mux"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 )
+
+var S *sql.DB
 
 // User Structure
 type User struct {
@@ -18,8 +21,11 @@ type User struct {
 	Id   int    `json:"id"`
 }
 
-// AddUserHandler receives json object of user details and calls addUser function to add the record in the database
-func AddUserHandler(w http.ResponseWriter, r *http.Request) {
+// Add receives json object of user details and calls add function to add the record in the database
+func Add(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	//b is the slice of bytes to read the request body
 	b := make([]byte, r.ContentLength)
 
 	_, err := io.ReadFull(r.Body, b)
@@ -30,83 +36,83 @@ func AddUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var user User
-	err = json.Unmarshal(b, &user)
+	_ = json.Unmarshal(b, &user)
+	err = user.add()
+	if err != nil {
 
-	switch r.Method {
-	case http.MethodPost:
-		err = user.addUser()
-		if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		log.Println(w.Write([]byte(fmt.Sprintf("Error: %v", err))))
+		return
+
+	} else {
+
+		w.WriteHeader(http.StatusCreated)
+		val := struct {
+			Message string `json:"message"`
+			Id      int    `json:"id"`
+		}{"User added successfully", user.Id}
+		v, _ := json.Marshal(val)
+		log.Println(w.Write(v))
+		return
+
+	}
+
+}
+
+// Remove receives user id and calls remove function to remove the record from the database
+func Remove(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Content-Type", "application/json")
+
+	//extracting the id from the request path
+	id := mux.Vars(r)["id"]
+
+	var err error
+	var user User
+	user.Id, err = strconv.Atoi(id)
+	if err != nil {
+
+		w.WriteHeader(http.StatusBadRequest)
+		log.Println(w.Write([]byte(fmt.Sprint("Error: ID must be an integer"))))
+		return
+
+	}
+
+	val, err := user.remove()
+	if err != nil {
+
+		if val == "404" {
+
+			w.WriteHeader(http.StatusNotFound)
+
+		} else {
+
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(fmt.Sprintf("Error: %v", err)))
-			return
-		} else {
-			w.WriteHeader(http.StatusCreated)
-			w.Write([]byte("User added successfully"))
-			return
+
 		}
-	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte(fmt.Sprintf("HTTP method %q not allowed", r.Method)))
+		w.Write([]byte(fmt.Sprintf("Error: %v", err)))
+		return
+
 	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(val))
+	return
 
 }
 
-// RemoveUserHandler receives user id and calls removeUser function to remove the record from the database
-func RemoveUserHandler(w http.ResponseWriter, r *http.Request) {
-	b := make([]byte, r.ContentLength)
+// List receives user id and calls list function to list the record from the database
+func List(w http.ResponseWriter, r *http.Request) {
 
-	_, err := io.ReadFull(r.Body, b)
+	w.Header().Set("Content-Type", "application/json")
 
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf("Error: %v", err)))
-		return
-	}
-	var user User
-	user.Id, err = strconv.Atoi(string(b))
+	//extracting the id from the request url
+	id := mux.Vars(r)["id"]
 
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprint("Error: ID must be an integer")))
-		return
-	}
-
-	switch r.Method {
-	case http.MethodDelete:
-		val, err := user.removeUser()
-		if err != nil {
-			if val == "404" {
-				w.WriteHeader(http.StatusNotFound)
-			} else {
-				w.WriteHeader(http.StatusBadRequest)
-			}
-			w.Write([]byte(fmt.Sprintf("Error: %v", err)))
-			return
-		} else {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(val))
-			return
-		}
-	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte(fmt.Sprintf("HTTP method %q not allowed", r.Method)))
-	}
-
-}
-
-// ListUserHandler receives user id and calls listUser function to list the record from the database
-func ListUserHandler(w http.ResponseWriter, r *http.Request) {
-	b := make([]byte, r.ContentLength)
-
-	_, err := io.ReadFull(r.Body, b)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf("Error: %v", err)))
-		return
-	}
+	var err error
 
 	user := &User{}
-	user.Id, err = strconv.Atoi(string(b))
+	user.Id, err = strconv.Atoi(id)
 
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -114,71 +120,63 @@ func ListUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch r.Method {
-	case http.MethodGet:
+	user, err = user.List()
 
-		user, err = user.listUser()
+	if err != nil {
 
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(fmt.Sprintf("Error: %v", err)))
-			return
-		}
-		val, err := json.Marshal(user)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(fmt.Sprintf("Error: %v", err)))
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-		w.Write(val)
-	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte(fmt.Sprintf("HTTP method %q not allowed", r.Method)))
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(fmt.Sprintf("Error: %v", err)))
+		return
+
 	}
+
+	val, err := json.Marshal(user)
+	if err != nil {
+
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(fmt.Sprintf("Error: %v", err)))
+		return
+
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(val)
 
 }
 
-// ListAllUserHandler calls the listAllUsers function to fetch all the records from the database
-func ListAllUsersHandler(w http.ResponseWriter, r *http.Request) {
-	b := make([]byte, r.ContentLength)
-	_, err := io.ReadFull(r.Body, b)
+// ListAllUserHandler calls the listall function to fetch all the records from the database
+func ListAll(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	var err error
+
+	var users []*User
+
+	user := User{}
+	users, err = user.listall()
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(fmt.Sprintf("Error: %v", err)))
 	}
-
-	var users []*User
-	switch r.Method {
-	case http.MethodGet:
-		user := User{}
-		users, err = user.listAllUsers()
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(fmt.Sprintf("Error: %v", err)))
-		}
-		val, err := json.Marshal(users)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(fmt.Sprintf("Error: %v", err)))
-		}
-		w.WriteHeader(http.StatusOK)
-		w.Write(val)
-	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte(fmt.Sprintf("HTTP method %q not allowed", r.Method)))
+	val, err := json.Marshal(users)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(fmt.Sprintf("Error: %v", err)))
 	}
+	w.WriteHeader(http.StatusOK)
+	w.Write(val)
+
 }
 
-// addUser function
-func (u *User) addUser() error {
+// add function
+func (u *User) add() error {
 	//Connecting to database
-	s, err := database_conn.NewConnection()
-	if err != nil {
-		return err
-	}
-	defer s.Close()
-
+	/*
+		s, err := database_conn.NewConnection()
+		if err != nil {
+			return err
+		}
+		defer s.Close()
+	*/
 	if u.Id == 0 {
 		return fmt.Errorf("User Details Required")
 	}
@@ -186,7 +184,7 @@ func (u *User) addUser() error {
 		return fmt.Errorf("Enter valid ID. Must be 4 Digits only.")
 	}
 
-	_, err = s.Exec(`INSERT INTO users (name,Id) VALUES (?,?)`, u.Name, u.Id)
+	_, err := S.Exec(`INSERT INTO users (name,Id) VALUES (?,?)`, u.Name, u.Id)
 	if err != nil {
 		return fmt.Errorf("Duplicate ID. User Already exist. Try again!")
 	}
@@ -194,19 +192,19 @@ func (u *User) addUser() error {
 }
 
 // removeBook function
-func (u *User) removeUser() (string, error) {
-
-	s, err := database_conn.NewConnection()
-	if err != nil {
-		return "", err
-	}
-	defer s.Close()
-
+func (u *User) remove() (string, error) {
+	/*
+		s, err := database_conn.NewConnection()
+		if err != nil {
+			return "", err
+		}
+		defer s.Close()
+	*/
 	if u.Id/1000 < 1 || u.Id/1000 >= 10 {
 		return "", fmt.Errorf("Enter valid ID. Must be 4 Digits only.")
 	}
 
-	result, err := s.Exec(`DELETE FROM users WHERE id=?`, u.Id)
+	result, err := S.Exec(`DELETE FROM users WHERE id=?`, u.Id)
 	if err != nil {
 		return "", fmt.Errorf("User cannot be removed. User must return the book before being removed.")
 
@@ -225,18 +223,19 @@ func (u *User) removeUser() (string, error) {
 }
 
 // listBook function
-func (u *User) listUser() (*User, error) {
-
-	s, err := database_conn.NewConnection()
-	if err != nil {
-		return &User{}, err
-	}
-	defer s.Close()
-
+func (u *User) List() (*User, error) {
+	/*
+		s, err := database_conn.NewConnection()
+		if err != nil {
+			return &User{}, err
+		}
+		defer s.Close()
+	*/
 	if u.Id/1000 < 1 || u.Id/1000 >= 10 {
 		return &User{}, fmt.Errorf("Enter valid ID. Must be 4 Digits only.")
 	}
-	err = s.QueryRow(`Select * from users where id=?`, u.Id).Scan(&u.Id, &u.Name)
+
+	err := S.QueryRow(`Select id,name from users where id=?`, u.Id).Scan(&u.Id, &u.Name)
 	if err != nil {
 
 		if err == sql.ErrNoRows {
@@ -248,15 +247,18 @@ func (u *User) listUser() (*User, error) {
 	return u, nil
 }
 
-// listAllUsers function
-func (u *User) listAllUsers() ([]*User, error) {
-	s, err := database_conn.NewConnection()
-	if err != nil {
-		return nil, err
-	}
-	defer s.Close()
+// listall function
+func (u *User) listall() ([]*User, error) {
+	/*
+		s, err := database_conn.NewConnection()
+		if err != nil {
+			return nil, err
+		}
+		defer s.Close()
+	*/
+
 	books := make([]*User, 0)
-	rows, err := s.Query(`Select id,name from users;`)
+	rows, err := S.Query(`Select id,name from users where deleted_at is null;`)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return []*User{}, errors.New("No Users available.")
