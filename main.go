@@ -22,27 +22,48 @@ Write HTTP Tests for Them
 
 func main() {
 	r := mux.NewRouter()
-	//routes with base url : http://localhost:8080/
-	r.HandleFunc("/user", users.Add).Methods(http.MethodPost)
-	r.HandleFunc("/user/{id}", users.List).Methods(http.MethodGet)
-	r.HandleFunc("/user", users.ListAll).Methods(http.MethodGet)
-	r.HandleFunc("/user/{id}", users.Remove).Methods(http.MethodDelete)
 
-	r.HandleFunc("/book", books.Add).Methods(http.MethodPost)
-	r.HandleFunc("/book/{isbn}", books.Remove).Methods(http.MethodDelete)
-	r.HandleFunc("/book", books.ListAvailible).Methods(http.MethodGet)
-	r.HandleFunc("/book/{isbn}", books.List).Methods(http.MethodGet)
-	r.HandleFunc("/book/rent", books.Borrow).Methods(http.MethodPost)
-	r.HandleFunc("/book/rent/{isbn}", books.Return).Methods(http.MethodDelete)
+	// creating UserHandler.
+	uh := users.UserHandler{
+		UserStore: &users.UserStore{},
+	}
+
+	// routes with base url : http://localhost:8080
+	r.HandleFunc("/user", uh.Add).Methods(http.MethodPost)
+	r.HandleFunc("/user/{id}", uh.List).Methods(http.MethodGet)
+	r.HandleFunc("/user", uh.ListAll).Methods(http.MethodGet)
+	r.HandleFunc("/user/{id}", uh.Remove).Methods(http.MethodDelete)
+
+	// creating BookHandler.
+	bh := books.BookHandler{
+		BookStore: &books.BookStore{},
+	}
+
+	// routes with base url : http://localhost:8080
+	r.HandleFunc("/book", bh.Add).Methods(http.MethodPost)
+	r.HandleFunc("/book/{isbn}", bh.Remove).Methods(http.MethodDelete)
+	r.HandleFunc("/book", bh.ListAvailible).Methods(http.MethodGet)
+	r.HandleFunc("/book/{isbn}", bh.List).Methods(http.MethodGet)
+
+	// creating RecordHandler.
+	rh := books.RecordHandler{
+		RentStore: &books.RentStore{},
+	}
+
+	// routes with base url : http://localhost:8080
+	r.HandleFunc("/book/rent", rh.Borrow).Methods(http.MethodPost)
+	r.HandleFunc("/book/rent/{isbn}", rh.Return).Methods(http.MethodDelete)
 	http.Handle("/", r)
 
 	var err error
+
 	S, err := sql.Open("mysql", "root:1234@tcp(localhost:3306)/library")
 	if err != nil {
 		log.Println(err)
 	} else {
 		users.S = S
 		books.S = S
+
 		log.Println("Database connected")
 	}
 
