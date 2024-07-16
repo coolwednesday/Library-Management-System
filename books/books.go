@@ -1,16 +1,17 @@
 package books
 
 import (
-	db "SimpleRESTApi/database_conn"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	_ "github.com/go-sql-driver/mysql"
 	"io"
 	"log"
 	"net/http"
 	"strconv"
+
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/gorilla/mux"
 )
 
 /*
@@ -18,6 +19,8 @@ Books Management:
 Each book has a title, author, and a unique ISBN.
 Books can be added, removed, and listed.
 */
+
+var S *sql.DB
 
 // Book Structure
 type Book struct {
@@ -28,56 +31,52 @@ type Book struct {
 
 // lendingRecord Book rented and User Mapping with isbn of book as key and user's id as value
 type lendingRecord struct {
-	UserID   int `json:"userid"`
-	BookISBN int `json:"bookisbn"`
+	UserID int `json:"userid"`
+	ISBN   int `json:"isbn"`
 }
 
-// AddBookHandler receives a json object of book details and calls the AddBook Function to add a record in the database
-func AddBookHandler(w http.ResponseWriter, r *http.Request) {
+// Add receives a json object of book details and calls the AddBook Function to add a record in the database
+func Add(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
 	b := make([]byte, r.ContentLength)
 
 	_, err := io.ReadFull(r.Body, b)
-
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	var book Book
+
 	err = json.Unmarshal(b, &book)
-	fmt.Println(book)
-	switch r.Method {
-	case http.MethodPost:
-		err = book.addBook()
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(fmt.Sprintf("Error: %v", err)))
-			return
-		} else {
-			w.WriteHeader(http.StatusCreated)
-			w.Write([]byte("Book added successfully"))
-			return
-		}
-	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte(fmt.Sprintf("HTTP method %q not allowed", r.Method)))
+
+	err = book.add()
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		log.Println(w.Write([]byte(fmt.Sprintf("Error: %v", err))))
+
+		return
 	}
+
+	w.WriteHeader(http.StatusCreated)
+	val := struct {
+		Message string
+		Isbn    int
+	}{"Book added successfully", book.Isbn}
+	v, _ := json.Marshal(val)
+	log.Println(w.Write(v))
 
 }
 
-// RemoveBookHandle receives the book's isbn and calls the removeBook function to removes the record from the database
-func RemoveBookHandler(w http.ResponseWriter, r *http.Request) {
-	b := make([]byte, r.ContentLength)
-
-	_, err := io.ReadFull(r.Body, b)
-
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf("Error: %v", err)))
-		return
-	}
+// RemoveBookHandle receives the book's isbn and calls the remove function to removes the record from the database
+func Remove(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	var err error
+	//extracting the id from the request url
+	id := mux.Vars(r)["isbn"]
 	var book Book
-	book.Isbn, err = strconv.Atoi(string(b))
+	book.Isbn, err = strconv.Atoi(id)
 
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -85,32 +84,30 @@ func RemoveBookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch r.Method {
-	case http.MethodDelete:
-		val, err := book.removeBook()
-		if err != nil {
-			if val == "404" {
-				w.WriteHeader(http.StatusNotFound)
-			} else {
-				w.WriteHeader(http.StatusBadRequest)
-			}
-			w.Write([]byte(fmt.Sprintf("Error: %v", err)))
-			return
+	val, err := book.remove()
+	if err != nil {
+		if val == "404" {
+			w.WriteHeader(http.StatusNotFound)
 		} else {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(val))
-			return
+			w.WriteHeader(http.StatusBadRequest)
 		}
-	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte(fmt.Sprintf("HTTP method %q not allowed", r.Method)))
+		w.Write([]byte(fmt.Sprintf("Error: %v", err)))
+		return
+	} else {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(val))
+		return
 	}
 
 }
 
-// ListBookHandler receives book's isbn in request and calls the ListBook function and returns Book details
-func ListBookHandler(w http.ResponseWriter, r *http.Request) {
+// List receives book's isbn in request and calls the ListBook function and returns Book details
+func List(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	b := make([]byte, r.ContentLength)
+
+	//extracting the id from the request url
+	id := mux.Vars(r)["isbn"]
 
 	_, err := io.ReadFull(r.Body, b)
 	if err != nil {
@@ -120,7 +117,7 @@ func ListBookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	book := &Book{}
-	book.Isbn, err = strconv.Atoi(string(b))
+	book.Isbn, err = strconv.Atoi(id)
 
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -128,60 +125,49 @@ func ListBookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch r.Method {
-	case http.MethodGet:
+	book, err = book.list()
 
-		book, err = book.listBook()
-
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(fmt.Sprintf("Error: %v", err)))
-			return
-		}
-		val, err := json.Marshal(book)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(fmt.Sprintf("Error: %v", err)))
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-		w.Write(val)
-	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte(fmt.Sprintf("HTTP method %q not allowed", r.Method)))
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(fmt.Sprintf("Error: %v", err)))
+		return
 	}
+	val, err := json.Marshal(book)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(fmt.Sprintf("Error: %v", err)))
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write(val)
 
 }
 
 // ListAvailibleBookHandler returns the list of availible books that can be rented
-func ListAvailibleBooksHandler(w http.ResponseWriter, r *http.Request) {
-	log.Println("Hello")
-	switch r.Method {
-	case http.MethodGet:
-		b := Book{}
-		books, err := b.listAvailibleBooks()
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(fmt.Sprintf("Error: %v", err)))
-			return
-		}
-		val, err := json.Marshal(books)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(fmt.Sprintf("Error: %v", err)))
-		}
-		w.WriteHeader(http.StatusOK)
-		w.Write(val)
-	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte(fmt.Sprintf("HTTP method %q not allowed", r.Method)))
+func ListAvailible(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	b := Book{}
+	books, err := b.listavailible()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(fmt.Sprintf("Error: %v", err)))
+		return
 	}
+	val, err := json.Marshal(books)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(fmt.Sprintf("Error: %v", err)))
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write(val)
 
 }
 
-// BorrowBookHandler receives user id and book's isbn as request and returns a update message and error if any
+// Borrow receives user id and book's isbn as request and returns a update message and error if any
 // Add the record under lendingRecords table in database
-func BorrowBookHandler(w http.ResponseWriter, r *http.Request) {
+func Borrow(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	b := make([]byte, r.ContentLength)
 
 	_, err := io.ReadFull(r.Body, b)
@@ -199,11 +185,11 @@ func BorrowBookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if l.BookISBN == 0 && l.UserID == 0 {
+	if l.ISBN == 0 && l.UserID == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Error: Empty Request Found. Enter the BookISBN and UserID."))
 		return
-	} else if l.BookISBN == 0 {
+	} else if l.ISBN == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Error: BookISBN is missing. Try Again."))
 		return
@@ -213,50 +199,39 @@ func BorrowBookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch r.Method {
-	case http.MethodPost:
-		val, err := l.borrowBook()
-		if err != nil {
-			if val == "404" {
-				w.WriteHeader(http.StatusNotFound)
-				w.Write([]byte(fmt.Sprintf("Error: %v", err)))
-				return
-			} else if val == "500" {
-				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte(fmt.Sprintf("Error: %v", err)))
-				return
-			}
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(fmt.Sprintf("Error: %v", err)))
-		}
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(val))
-	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte(fmt.Sprintf("HTTP method %q not allowed", r.Method)))
-	}
-}
-
-// ReturnBookHandler receives isbn of book  as request and returns an update message and error if any
-// Also removes record book's isbn from the lendingRecords table in database
-func ReturnBookHandler(w http.ResponseWriter, r *http.Request) {
-	b := make([]byte, r.ContentLength)
-
-	_, err := io.ReadFull(r.Body, b)
-
+	val, err := l.borrow()
 	if err != nil {
+		if val == "404" {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(fmt.Sprintf("Error: %v", err)))
+			return
+		} else if val == "500" {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(fmt.Sprintf("Error: %v", err)))
+			return
+		}
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(fmt.Sprintf("Error: %v", err)))
-		return
 	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(val))
+
+}
+
+// Return receives isbn of book  as request and returns an update message and error if any
+// Also removes record book's isbn from the lendingRecords table in database
+func Return(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	id := mux.Vars(r)["isbn"]
+	var err error
 
 	var l lendingRecord
-	if string(b) == "" {
+	if id == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Error: Empty Request Found. Enter the BookISBN."))
 		return
 	}
-	l.BookISBN, err = strconv.Atoi(string(b))
+	l.ISBN, err = strconv.Atoi(id)
 
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -264,44 +239,32 @@ func ReturnBookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch r.Method {
-	case http.MethodDelete:
-		val, err := l.returnBook()
-		if err != nil {
-			if val == "404" {
-				w.WriteHeader(http.StatusNotFound)
-			} else if val == "500" {
-				w.WriteHeader(http.StatusInternalServerError)
-			} else {
-				w.WriteHeader(http.StatusBadRequest)
-			}
-			w.Write([]byte(fmt.Sprintf("Error: %v", err)))
-			return
+	val, err := l.returnbook()
+	if err != nil {
+		if val == "404" {
+			w.WriteHeader(http.StatusNotFound)
+		} else if val == "500" {
+			w.WriteHeader(http.StatusInternalServerError)
 		} else {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(val))
-			return
+			w.WriteHeader(http.StatusBadRequest)
 		}
-	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte(fmt.Sprintf("HTTP method %q not allowed", r.Method)))
+		w.Write([]byte(fmt.Sprintf("Error: %v", err)))
+		return
+	} else {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(val))
+		return
 	}
 
 }
 
 // addBooks Function
-func (b *Book) addBook() error {
-	//Connecting to database
-	s, err := db.NewConnection()
-	if err != nil {
-		return err
-	}
-	defer s.Close()
+func (b *Book) add() error {
 
 	if b.Isbn == 0 {
 		return fmt.Errorf("Book Details Required")
 	}
-	_, err = s.Exec(`INSERT INTO books (title,author,isbn) VALUES (?,?,?)`, b.Title, b.Author, b.Isbn)
+	_, err := S.Exec(`INSERT INTO books (title,author,isbn) VALUES (?,?,?)`, b.Title, b.Author, b.Isbn)
 	if err != nil {
 		return fmt.Errorf("Duplicate ISBN. Book Already exist. Try again!")
 	}
@@ -309,18 +272,12 @@ func (b *Book) addBook() error {
 }
 
 // RemoveBook Function
-func (b *Book) removeBook() (string, error) {
-
-	s, err := db.NewConnection()
-	if err != nil {
-		return "", err
-	}
-	defer s.Close()
+func (b *Book) remove() (string, error) {
 
 	if b.Isbn/10000 < 1 || b.Isbn/10000 >= 10 {
 		return "", fmt.Errorf("Enter valid ISBN. Must be 5 Digits only.")
 	}
-	result, err := s.Exec(`DELETE FROM books WHERE isbn=?`, b.Isbn)
+	result, err := S.Exec(`DELETE FROM books WHERE isbn=?`, b.Isbn)
 	if err != nil {
 		return "", err
 	} else {
@@ -336,19 +293,14 @@ func (b *Book) removeBook() (string, error) {
 
 }
 
-// listBook Function
-func (b *Book) listBook() (*Book, error) {
-
-	s, err := db.NewConnection()
-	if err != nil {
-		return &Book{}, err
-	}
-	defer s.Close()
+// list Function
+func (b *Book) list() (*Book, error) {
 
 	if b.Isbn/10000 < 1 || b.Isbn/10000 >= 10 {
 		return &Book{}, fmt.Errorf("Enter valid ISBN. Must be 5 Digits only.")
 	}
-	err = s.QueryRow(`Select * from books where isbn=?`, b.Isbn).Scan(&b.Isbn, &b.Title, &b.Author)
+	var f interface{}
+	err := S.QueryRow(`Select * from books where isbn=?`, b.Isbn).Scan(&b.Isbn, &b.Title, &b.Author, &f)
 	if err != nil {
 
 		if err == sql.ErrNoRows {
@@ -360,17 +312,13 @@ func (b *Book) listBook() (*Book, error) {
 	return b, nil
 }
 
-// listAvailibleBooks Function
-func (b *Book) listAvailibleBooks() ([]*Book, error) {
-	s, err := db.NewConnection()
-	if err != nil {
-		return nil, err
-	}
-	defer s.Close()
+// listavailible Function
+func (b *Book) listavailible() ([]*Book, error) {
+
 	books := make([]*Book, 0)
-	rows, err := s.Query(`Select s.isbn,s.title,s.author from books s LEFT JOIN lendingRecords r on s.isbn = r.bookid where r.bookid is null;`)
+	rows, err := S.Query(`Select s.isbn,s.title,s.author from books s LEFT JOIN lendingRecords r on s.isbn = r.bookid where r.bookid is null;`)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return []*Book{}, errors.New("No Books available.")
 		}
 		return nil, err
@@ -390,16 +338,10 @@ func (b *Book) listAvailibleBooks() ([]*Book, error) {
 	return books, nil
 }
 
-// borrowBook Function
-func (l lendingRecord) borrowBook() (string, error) {
+// borrow Function
+func (l lendingRecord) borrow() (string, error) {
 
-	s, err := db.NewConnection()
-	if err != nil {
-		return "500", err
-	}
-	defer s.Close()
-
-	if l.BookISBN/10000 < 1 || l.BookISBN/10000 >= 10 {
+	if l.ISBN/10000 < 1 || l.ISBN/10000 >= 10 {
 		return "", fmt.Errorf("Enter valid ISBN. Must be 5 Digits only.")
 	}
 
@@ -408,7 +350,7 @@ func (l lendingRecord) borrowBook() (string, error) {
 	}
 
 	var isbn int
-	err = s.QueryRow(`Select s.isbn from books s LEFT JOIN lendingRecords r on s.isbn = r.bookid where s.isbn=? and r.bookid is null;`, l.BookISBN).Scan(&isbn)
+	err := S.QueryRow(`Select s.isbn from books s LEFT JOIN lendingRecords r on s.isbn = r.bookid where s.isbn=? and r.bookid is null;`, l.ISBN).Scan(&isbn)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return "404", errors.New("Book with this ISBN does not exist or is already borrowed.")
@@ -416,7 +358,7 @@ func (l lendingRecord) borrowBook() (string, error) {
 		return "500", err
 	}
 
-	_, err = s.Exec(`INSERT INTO lendingRecords(userid,bookid)VALUES((Select id from users where id=?),(Select isbn from books where isbn=?));`, l.UserID, l.BookISBN)
+	_, err = S.Exec(`INSERT INTO lendingRecords(userid,bookid)VALUES((Select id from users where id=?),(Select isbn from books where isbn=?));`, l.UserID, l.ISBN)
 	if err != nil {
 		return "500", fmt.Errorf("Borrow Book Event Failed. Try Again: %s", err)
 	}
@@ -424,23 +366,19 @@ func (l lendingRecord) borrowBook() (string, error) {
 }
 
 // returnBook Function
-func (l lendingRecord) returnBook() (string, error) {
+func (l lendingRecord) returnbook() (string, error) {
 
-	s, err := db.NewConnection()
-	if err != nil {
-		return "500", err
-	}
-	defer s.Close()
-
-	if l.BookISBN/10000 < 1 || l.BookISBN/10000 >= 10 {
+	if l.ISBN/10000 < 1 || l.ISBN/10000 >= 10 {
 		return "", fmt.Errorf("Enter valid ISBN. Must be 5 Digits only.")
 	}
-	result, err := s.Exec(`DELETE FROM lendingRecords where bookid=?`, l.BookISBN)
+
+	result, err := S.Exec(`DELETE FROM lendingRecords where bookid=?`, l.ISBN)
 	if err != nil {
 		return "500", fmt.Errorf("Return Book Event Failed. Try Again: %s", err)
 	}
+
 	if val, _ := result.RowsAffected(); val == 0 {
-		err := s.QueryRow(`Select * from books where isbn=?`, l.BookISBN).Scan()
+		err := S.QueryRow(`Select * from books where isbn=?`, l.ISBN).Scan()
 		if err != nil {
 			if err == sql.ErrNoRows {
 				return "404", errors.New("Book with this ISBN does not exist.")
