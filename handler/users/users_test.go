@@ -1,6 +1,7 @@
 package users
 
 import (
+	"SimpleRESTApi/models"
 	"errors"
 	"github.com/gorilla/mux"
 	"go.uber.org/mock/gomock"
@@ -14,7 +15,7 @@ func TestAddUsers(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockUserStorer(ctrl)
+	mockStore := NewMockUserServicer(ctrl)
 
 	tests := []struct {
 		name         string
@@ -34,8 +35,11 @@ func TestAddUsers(t *testing.T) {
 			[]byte("error: duplicate id. User already exist. Try again")},
 	}
 
-	mockStore.EXPECT().add(1234, "User3").Return(nil)
-	mockStore.EXPECT().add(9056, "User1").Return(errors.New("duplicate id. User already exist. Try again"))
+	mockStore.EXPECT().Add(34567, "User1").Return(errors.New("enter valid id. Must be 4 digits only"))
+	mockStore.EXPECT().Add(345, "User1").Return(errors.New("enter valid id. Must be 4 digits only"))
+	mockStore.EXPECT().Add(1234, "User3").Return(nil)
+	mockStore.EXPECT().Add(0, "").Return(errors.New("user details required"))
+	mockStore.EXPECT().Add(9056, "User1").Return(errors.New("duplicate id. User already exist. Try again"))
 
 	// Running for all testcases.
 	for _, test := range tests {
@@ -43,7 +47,7 @@ func TestAddUsers(t *testing.T) {
 
 		response := httptest.NewRecorder()
 
-		uh := UserHandler{mockStore}
+		uh := handler{mockStore}
 
 		uh.Add(response, request)
 
@@ -62,7 +66,7 @@ func TestRemoveUser(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockUserStorer(ctrl)
+	mockStore := NewMockUserServicer(ctrl)
 
 	tests := []struct {
 		name         string
@@ -83,9 +87,11 @@ func TestRemoveUser(t *testing.T) {
 		{"Sending String instead of Integer", "DELETE", "/user/`3456`", `"3456"`, []byte("error: id must be an integer"), 400},
 	}
 
-	mockStore.EXPECT().remove(3245).Return("404", errors.New("user with this id does not exist"))
-	mockStore.EXPECT().remove(1234).Return("User removed successfully", nil)
-	mockStore.EXPECT().remove(8902).Return("", errors.New("user cannot be removed. User must return the book before being removed"))
+	mockStore.EXPECT().Remove(34567).Return("400", errors.New("enter valid id. Must be 4 digits only"))
+	mockStore.EXPECT().Remove(345).Return("400", errors.New("enter valid id. Must be 4 digits only"))
+	mockStore.EXPECT().Remove(3245).Return("404", errors.New("user with this id does not exist"))
+	mockStore.EXPECT().Remove(1234).Return("User removed successfully", nil)
+	mockStore.EXPECT().Remove(8902).Return("", errors.New("user cannot be removed. User must return the book before being removed"))
 
 	// Testing all the tests for RemoveBookHandler
 	for _, test := range tests {
@@ -95,7 +101,7 @@ func TestRemoveUser(t *testing.T) {
 
 		response := httptest.NewRecorder()
 
-		uh := UserHandler{mockStore}
+		uh := handler{mockStore}
 
 		uh.Remove(response, request)
 
@@ -114,7 +120,7 @@ func TestListUser(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockStore := NewMockUserStorer(ctrl)
+	mockStore := NewMockUserServicer(ctrl)
 
 	tests := []struct {
 		name         string
@@ -132,9 +138,10 @@ func TestListUser(t *testing.T) {
 		// {"Wrong Method", "DELETE", "/user?id=3456", `3456`, []byte("HTTP method \"DELETE\" not allowed"), 405},
 		{"Sending String instead of Integer", "GET", "/book/`3456`", `"3456"`, []byte("error: id must be an integer"), 400},
 	}
-
-	mockStore.EXPECT().list(1234).Return(nil, errors.New("user with this id does not exist"))
-	mockStore.EXPECT().list(3456).Return(&User{"User5", 3456}, nil)
+	mockStore.EXPECT().List(34567).Return(nil, errors.New("enter valid id. Must be 4 digits only"))
+	mockStore.EXPECT().List(345).Return(nil, errors.New("enter valid id. Must be 4 digits only"))
+	mockStore.EXPECT().List(1234).Return(nil, errors.New("user with this id does not exist"))
+	mockStore.EXPECT().List(3456).Return(&models.User{"User5", 3456}, nil)
 
 	for _, test := range tests {
 		request := httptest.NewRequest(test.method, test.target, strings.NewReader(test.input))
@@ -143,9 +150,48 @@ func TestListUser(t *testing.T) {
 
 		response := httptest.NewRecorder()
 
-		uh := UserHandler{mockStore}
+		uh := handler{mockStore}
 
 		uh.List(response, request)
+
+		if response.Code != test.expectedCode {
+			t.Errorf("%v : Error , expected: %v, got: %v ", test.name, test.expectedCode, response.Code)
+		}
+
+		if response.Body.String() != string(test.expectedBody) {
+			t.Errorf("%v : Error , expected: %v, got: %v ", test.name, string(test.expectedBody), response.Body.String())
+		}
+	}
+}
+
+// TestListBook function tests for all possible requests to TestListBookHandler.
+func TestListAllUser(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockUserServicer(ctrl)
+
+	tests := []struct {
+		name         string
+		method       string
+		target       string
+		expectedBody []byte
+		expectedCode int
+	}{
+		{"No Users Availible", "GET", "/user", []byte(`error: no users availible`), 404},
+		{"Users Availible", "GET", "/user", []byte(`[{"name":"User5","id":3456}]`), 200},
+	}
+	mockStore.EXPECT().ListAll().Return(nil, errors.New("no users availible"))
+	mockStore.EXPECT().ListAll().Return([]*models.User{{"User5", 3456}}, nil)
+
+	for _, test := range tests {
+		request := httptest.NewRequest(test.method, test.target, strings.NewReader(""))
+
+		response := httptest.NewRecorder()
+
+		uh := handler{mockStore}
+
+		uh.ListAll(response, request)
 
 		if response.Code != test.expectedCode {
 			t.Errorf("%v : Error , expected: %v, got: %v ", test.name, test.expectedCode, response.Code)
