@@ -1,16 +1,22 @@
 package books
 
 import (
-	"database/sql"
-	"github.com/gorilla/mux"
-	"log"
+	"errors"
+	"go.uber.org/mock/gomock"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/gorilla/mux"
 )
 
-// TestAddBooks function tests for all possible requests to Add
+// TestAddBooks function tests for all possible requests to Add.
 func TestAddBooks(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockBookStorer(ctrl)
+
 	tests := []struct {
 		name         string
 		method       string
@@ -19,39 +25,47 @@ func TestAddBooks(t *testing.T) {
 		expectedCode int
 		expectedBody []byte
 	}{
-		{"Adding a Book", "POST", "/book", `{"title":"Book6","author":"Author5","isbn":34567}`, 201, []byte(`{"Message":"Book added successfully","Isbn":34567}`)},
-		{"Empty request", "POST", "/book", `{}`, 400, []byte("Error: Book Details Required")},
-		{"Adding Book with Duplicate ISBN", "POST", "/book", `{"title":"Book1","author":"Author5","isbn":12905}`, 400, []byte("Error: Duplicate ISBN. Book Already exist. Try again!")},
-		//{"Wrong Method", "GET", "/book", "Divya", 405, []byte("HTTP method \"GET\" not allowed")},
+		{"Adding a Book", "POST", "/book", `{"title":"Book6","author":"Author5","isbn":34567}`,
+			201, []byte(`{"Message":"book added successfully","Isbn":34567}`)},
+		{"Empty request", "POST", "/book", `{}`, 400,
+			[]byte("error: book details required")},
+		{"Adding Book with Duplicate ISBN", "POST", "/book",
+			`{"title":"Book1","author":"Author5","isbn":12905}`, 400,
+			[]byte("error: duplicate isbn. Book already exists. Try again")},
 	}
 
-	var err error
-	S, err = sql.Open("mysql", "root:1234@tcp(localhost:3306)/library")
-	if err != nil {
-		log.Println(err)
-	} else {
-		log.Println("Database connected", S)
-	}
+	mockStore.EXPECT().add(34567, "Book6", "Author5").
+		Return(nil)
+	mockStore.EXPECT().add(12905, "Book1", "Author5").
+		Return(errors.New("duplicate isbn. Book already exists. Try again"))
 
 	//Running for all testcases
 	for _, test := range tests {
-
 		request := httptest.NewRequest(test.method, test.target, strings.NewReader(test.input))
 
 		response := httptest.NewRecorder()
-		Add(response, request)
+
+		bh := BookHandler{mockStore}
+
+		bh.Add(response, request)
+
 		if response.Code != test.expectedCode {
 			t.Errorf("%v : Error , expected %v, got %v ", test.name, test.expectedCode, response.Code)
 		}
+
 		if response.Body.String() != string(test.expectedBody) {
 			t.Errorf("%v : Error , expected %v, got %v ", test.name, string(test.expectedBody), response.Body.String())
 		}
 	}
 }
 
-// TestRemoveBook function tests for all possible requests to Remove
+// TestRemoveBook function tests for all possible requests to Remove.
 func TestRemoveBook(t *testing.T) {
-	//res struct describes the output of the updated slice of Books after removing book and the error if any
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockBookStorer(ctrl)
+
 	tests := []struct {
 		name         string
 		method       string
@@ -60,32 +74,42 @@ func TestRemoveBook(t *testing.T) {
 		expectedBody []byte
 		expectedCode int
 	}{
-		{"Wrong format of ISBN, 6 Digits", "DELETE", "/book?isbn=345679", `345679`, []byte("Error: Enter valid ISBN. Must be 5 Digits only."), 400},
-		{"Wrong format of ISBN, 4 Digits", "DELETE", "/book?isbn=3456", `3456`, []byte("Error: Enter valid ISBN. Must be 5 Digits only."), 400},
-		{"Empty ISBN", "DELETE", "/book?isbn=", ``, []byte("Error: ISBN must be an integer"), 400},
-		{"ISBN does not exist", "DELETE", "/book?isbn=32456", `32456`, []byte("Error: Book with this ISBN does not exist."), 404},
-		{"Correct ISBN", "DELETE", "/book?isbn=34567", `34567`, []byte("Book removed successfully"), 200},
-		//{"Wrong Method", "GET", "/book?isbn=34567", `34567`, []byte("HTTP method \"GET\" not allowed"), 405},
-		{"Sending String instead of Integer", "DELETE", "/book?isbn=`345679`", `"345679"`, []byte("Error: ISBN must be an integer"), 400},
+		{"Wrong format of ISBN, 6 Digits", "DELETE", "/book/345679", `345679`, []byte("error: enter valid isbn. Must be 5 digits only"), 400},
+		{"Wrong format of ISBN, 4 Digits", "DELETE", "/book/3456", `3456`, []byte("error: enter valid isbn. Must be 5 digits only"), 400},
+		{"Empty ISBN", "DELETE", "/book", ``, []byte("error: isbn must be an integer"), 400},
+		{"ISBN does not exist", "DELETE", "/book/32456", `32456`, []byte("error: book with this isbn does not exist"), 404},
+		{"Correct ISBN", "DELETE", "/book/34567", `34567`, []byte("book removed successfully"), 200},
+		{"Sending String instead of Integer", "DELETE", "/book?isbn=`345679`", `"345679"`, []byte("error: isbn must be an integer"), 400},
 	}
 
-	//Testing all the tests for RemoveBook Function
+	mockStore.EXPECT().remove(32456).Return("404", errors.New("book with this isbn does not exist"))
+	mockStore.EXPECT().remove(34567).Return("book removed successfully", nil)
+
+	//Testing all the tests for Remove.
 	for _, test := range tests {
 		request := httptest.NewRequest(test.method, test.target, strings.NewReader(test.input))
 		request = mux.SetURLVars(request, map[string]string{"isbn": test.input})
 		response := httptest.NewRecorder()
-		Remove(response, request)
+		bh := BookHandler{mockStore}
+		bh.Remove(response, request)
+
 		if response.Code != test.expectedCode {
 			t.Errorf("%v : Error , expected: %v, got: %v ", test.name, test.expectedCode, response.Code)
 		}
+
 		if response.Body.String() != string(test.expectedBody) {
 			t.Errorf("%v : Error , expected: %v, got: %v ", test.name, string(test.expectedBody), response.Body.String())
 		}
 	}
 }
 
-// TestListBook function tests for all possible requests to List
+// TestListBook function tests for all possible requests to List.
 func TestListBook(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockBookStorer(ctrl)
+
 	tests := []struct {
 		name         string
 		method       string
@@ -94,33 +118,49 @@ func TestListBook(t *testing.T) {
 		expectedBody []byte
 		expectedCode int
 	}{
-		{"Wrong format of ISBN, 6 Digits", "GET", "/book/345679", `345679`, []byte("Error: Enter valid ISBN. Must be 5 Digits only."), 400},
-		{"Wrong format of ISBN, 4 Digits", "GET", "/book/3456", `3456`, []byte("Error: Enter valid ISBN. Must be 5 Digits only."), 400},
-		{"Empty ISBN", "GET", "/book/", ``, []byte("Error: ISBN must be an integer"), 400},
-		{"ISBN does not exist", "GET", "/book/32456", `32456`, []byte("Error: Book with this ISBN does not exist."), 400},
+		{"Wrong format of ISBN, 6 Digits", "GET", "/book/345679", `345679`, []byte("error: enter valid isbn. Must be 5 digits only"), 400},
+		{"Wrong format of ISBN, 4 Digits", "GET", "/book/3456", `3456`, []byte("error: enter valid isbn. Must be 5 digits only"), 400},
+		{"Empty ISBN", "GET", "/book/", ``, []byte("error: isbn must be an integer"), 400},
+		{"ISBN does not exist", "GET", "/book/32456", `32456`, []byte("error: book with this isbn does not exist"), 400},
 		{"Correct ISBN", "GET", "/book/12785", `12785`, []byte(`{"title":"Book3","author":"Author3","isbn":12785}`), 200},
-		//{"Wrong Method", "DELETE", "/book?isbn=34567", `34567`, []byte("HTTP method \"DELETE\" not allowed"), 405},
-		{"Sending String instead of Integer", "GET", "/book/`345679`", `"345679"`, []byte("Error: ISBN must be an integer"), 400},
+		{"Sending String instead of Integer", "GET", "/book/`345679`", `"345679"`, []byte("error: isbn must be an integer"), 400},
 	}
+
+	mockStore.EXPECT().list(32456).Return(nil, errors.New("book with this isbn does not exist"))
+	mockStore.EXPECT().list(12785).Return(&Book{
+		"Book3",
+		"Author3",
+		12785,
+	}, nil)
 
 	for _, test := range tests {
 		request := httptest.NewRequest(test.method, test.target, strings.NewReader(test.input))
+
 		request = mux.SetURLVars(request, map[string]string{"isbn": test.input})
+
 		response := httptest.NewRecorder()
 
-		List(response, request)
+		bh := BookHandler{mockStore}
+
+		bh.List(response, request)
+
 		if response.Code != test.expectedCode {
 			t.Errorf("%v : Error , expected: %v, got: %v ", test.name, test.expectedCode, response.Code)
 		}
-		if string(response.Body.Bytes()) != string(test.expectedBody) {
-			t.Errorf("%v : Error , expected: %v, got: %v ", test.name, string(test.expectedBody), string(response.Body.Bytes()))
+
+		if response.Body.String() != string(test.expectedBody) {
+			t.Errorf("%v : Error , expected: %v, got: %v ", test.name, string(test.expectedBody), response.Body.String())
 		}
 	}
-
 }
 
-// TestBorrowBook function tests for all possible requests to Borrow
+// TestBorrowBook function tests for all possible requests to Borrow.
 func TestBorrowBook(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockRecordStorer(ctrl)
+
 	tests := []struct {
 		name         string
 		method       string
@@ -129,34 +169,54 @@ func TestBorrowBook(t *testing.T) {
 		expectedBody []byte
 		expectedCode int
 	}{
-		{"Empty Request", "POST", "/book/rent", "{}", []byte("Error: Empty Request Found. Enter the BookISBN and UserID."), 400},
-		{"Invalid Book", "POST", "/book/rent", `{"userid":1340,"isbn":12345}`, []byte("Error: Book with this ISBN does not exist or is already borrowed."), 404},
-		{"Wrong Format of UserID", "POST", "/book/rent", `{"userid":123,"isbn":12345}`, []byte("Error: Enter valid ID. Must be 4 Digits only."), 400},
-		{"Wrong Format of ISBN", "POST", "/book/rent", `{"userid":1234,"isbn":123456}`, []byte("Error: Enter valid ISBN. Must be 5 Digits only."), 400},
-		{"Missing UserID", "POST", "/book/rent", `{"isbn": 34567}`, []byte("Error: UserID is missing. Try Again."), 400},
-		{"Missing Book ISBN", "POST", "/book/rent", `{"userid": 1234}`, []byte("Error: BookISBN is missing. Try Again."), 400},
-		{"Available Book", "POST", "/book/rent", `{"userid":1567,"isbn":19905}`, []byte("Book Borrowed Successfully"), 200},
-		{"Book Already Borrowed", "POST", "/book/rent", `{"userid":1567,"isbn":19905}`, []byte("Error: Book with this ISBN does not exist or is already borrowed."), 404},
-		//{"Wrong Method", "GET", "/book/borrow", `{"userID":9056,"bookISBN":19905}`, []byte("HTTP method \"GET\" not allowed"), 405},
+		{"Empty Request", "POST", "/book/rent", "{}",
+			[]byte("error: empty request found. Enter the isbn and userid"), 400},
+		{"Invalid Book", "POST", "/book/rent", `{"userid":1340,"isbn":12345}`,
+			[]byte("error: book with this isbn does not exist or is already borrowed"), 404},
+		{"Wrong Format of UserID", "POST", "/book/rent", `{"userid":123,"isbn":12345}`,
+			[]byte("error: enter valid id. Must be 4 digits only"), 400},
+		{"Wrong Format of ISBN", "POST", "/book/rent", `{"userid":1234,"isbn":123456}`,
+			[]byte("error: enter valid isbn. Must be 5 digits only"), 400},
+		{"Missing UserID", "POST", "/book/rent", `{"isbn": 34567}`,
+			[]byte("error: userid is missing. Try again"), 400},
+		{"Missing Book ISBN", "POST", "/book/rent", `{"userid": 1234}`,
+			[]byte("error: isbn is missing. Try again"), 400},
+		{"Available Book", "POST", "/book/rent", `{"userid":1567,"isbn":19905}`,
+			[]byte("book borrowed successfully"), 200},
+		{"Book Already Borrowed", "POST", "/book/rent", `{"userid":1567,"isbn":19905}`,
+			[]byte("error: book with this isbn does not exist or is already borrowed"), 404},
 	}
+
+	mockStore.EXPECT().borrow(1340, 12345).Return("404", errors.New("book with this isbn does not exist or is already borrowed"))
+	mockStore.EXPECT().borrow(1567, 19905).Return("book borrowed successfully", nil)
+	mockStore.EXPECT().borrow(1567, 19905).Return("404", errors.New("book with this isbn does not exist or is already borrowed"))
 
 	for _, test := range tests {
 		request := httptest.NewRequest(test.method, test.target, strings.NewReader(test.input))
+
 		response := httptest.NewRecorder()
 
-		Borrow(response, request)
+		rh := RecordHandler{mockStore}
+
+		rh.Borrow(response, request)
 
 		if response.Code != test.expectedCode {
 			t.Errorf("%v : Error , expected: %v, got: %v ", test.name, test.expectedCode, response.Code)
 		}
-		if string(response.Body.Bytes()) != string(test.expectedBody) {
-			t.Errorf("%v : Error , expected: %v, got: %v ", test.name, string(test.expectedBody), string(response.Body.Bytes()))
+
+		if response.Body.String() != string(test.expectedBody) {
+			t.Errorf("%v : Error , expected: %v, got: %v ", test.name, string(test.expectedBody), response.Body.String())
 		}
 	}
 }
 
-// TestReturnBook function tests for all possible requests to Return
+// TestReturnBook function tests for all possible requests to Return.
 func TestReturnBook(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStore := NewMockRecordStorer(ctrl)
+
 	tests := []struct {
 		name         string
 		method       string
@@ -165,26 +225,34 @@ func TestReturnBook(t *testing.T) {
 		expectedBody []byte
 		expectedCode int
 	}{
-		{"Empty Request", "DELETE", "/book/return/", "", []byte("Error: Empty Request Found. Enter the BookISBN."), 400},
-		{"Invalid Book", "DELETE", "/book/return/12345", `12345`, []byte("Error: Book with this ISBN does not exist."), 404},
-		{"Wrong Format of ISBN", "DELETE", "/book/return/123456", `123456`, []byte("Error: Enter valid ISBN. Must be 5 Digits only."), 400},
-		{"Book Not Borrowed", "DELETE", "/book/return/12905", `12905`, []byte("Error: Book with this ISBN was not borrowed."), 400},
-		{"Return Book", "DELETE", "/book/return/19905", `19905`, []byte("Book Returned Successfully"), 200},
-		//{"Wrong Method", "POST", "/book/return", `19905`, []byte("HTTP method \"POST\" not allowed"), 405},
+		{"Empty Request", "DELETE", "/book/return/", "", []byte("error: empty request found. Enter the isbn"), 400},
+		{"Invalid Book", "DELETE", "/book/return/12345", `12345`, []byte("error: book with this isbn does not exist"), 404},
+		{"Wrong Format of ISBN", "DELETE", "/book/return/123456", `123456`, []byte("error: enter valid isbn. Must be 5 digits only"), 400},
+		{"Book Not Borrowed", "DELETE", "/book/return/12905", `12905`, []byte("error: book with this isbn was not borrowed"), 400},
+		{"Return Book", "DELETE", "/book/return/19905", `19905`, []byte("book returned successfully"), 200},
 	}
+
+	mockStore.EXPECT().returnbook(12345).Return("404", errors.New("book with this isbn does not exist"))
+	mockStore.EXPECT().returnbook(12905).Return("", errors.New("book with this isbn was not borrowed"))
+	mockStore.EXPECT().returnbook(19905).Return("book returned successfully", nil)
 
 	for _, test := range tests {
 		request := httptest.NewRequest(test.method, test.target, strings.NewReader(test.input))
+
 		request = mux.SetURLVars(request, map[string]string{"isbn": test.input})
+
 		response := httptest.NewRecorder()
 
-		Return(response, request)
+		rh := RecordHandler{mockStore}
+
+		rh.Return(response, request)
 
 		if response.Code != test.expectedCode {
 			t.Errorf("%v : Error , expected: %v, got: %v ", test.name, test.expectedCode, response.Code)
 		}
-		if string(response.Body.Bytes()) != string(test.expectedBody) {
-			t.Errorf("%v : Error , expected: %v, got: %v ", test.name, string(test.expectedBody), string(response.Body.Bytes()))
+
+		if response.Body.String() != string(test.expectedBody) {
+			t.Errorf("%v : Error , expected: %v, got: %v ", test.name, string(test.expectedBody), response.Body.String())
 		}
 	}
 

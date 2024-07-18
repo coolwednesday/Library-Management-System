@@ -5,27 +5,38 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/gorilla/mux"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
+
+	"github.com/gorilla/mux"
+
+	// connecting sql driver.
+	_ "github.com/go-sql-driver/mysql"
 )
 
 var S *sql.DB
 
-// User Structure
+// UserHandler defines a struct that has a UserStorer interface.
+type UserHandler struct {
+	UserStore UserStorer
+}
+
+// UserStore struct.
+type UserStore struct {
+}
+
+// User Structure.
 type User struct {
 	Name string `json:"name"`
 	Id   int    `json:"id"`
 }
 
-// Add receives json object of user details and calls add function to add the record in the database
-func Add(w http.ResponseWriter, r *http.Request) {
+// Add receives json object of user details and calls add function to add the record in the database.
+func (uh *UserHandler) Add(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	//b is the slice of bytes to read the request body
+	// b is the slice of bytes to read the request body
 	b := make([]byte, r.ContentLength)
 
 	_, err := io.ReadFull(r.Body, b)
@@ -37,241 +48,223 @@ func Add(w http.ResponseWriter, r *http.Request) {
 
 	var user User
 	_ = json.Unmarshal(b, &user)
-	err = user.add()
-	if err != nil {
 
+	if user.Id == 0 {
 		w.WriteHeader(http.StatusBadRequest)
-		log.Println(w.Write([]byte(fmt.Sprintf("Error: %v", err))))
+		_, _ = w.Write([]byte("error: user details required"))
+
 		return
-
-	} else {
-
-		w.WriteHeader(http.StatusCreated)
-		val := struct {
-			Message string `json:"message"`
-			Id      int    `json:"id"`
-		}{"User added successfully", user.Id}
-		v, _ := json.Marshal(val)
-		log.Println(w.Write(v))
-		return
-
 	}
 
+	if user.Id/1000 < 1 || user.Id/1000 >= 10 {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte("error: enter valid id. Must be 4 digits only"))
+
+		return
+	}
+
+	err = uh.UserStore.add(user.Id, user.Name)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(fmt.Sprintf("error: %v", err)))
+
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	val := struct {
+		Message string `json:"message"`
+		Id      int    `json:"id"`
+	}{
+		"User added successfully",
+		user.Id,
+	}
+	v, _ := json.Marshal(val)
+	_, _ = w.Write(v)
 }
 
-// Remove receives user id and calls remove function to remove the record from the database
-func Remove(w http.ResponseWriter, r *http.Request) {
-
+// Remove receives user id and calls remove function to remove the record from the database.
+func (uh *UserHandler) Remove(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	//extracting the id from the request path
+	// extracting the id from the request path
 	id := mux.Vars(r)["id"]
 
 	var err error
-	var user User
-	user.Id, err = strconv.Atoi(id)
+
+	userid, err := strconv.Atoi(id)
 	if err != nil {
-
 		w.WriteHeader(http.StatusBadRequest)
-		log.Println(w.Write([]byte(fmt.Sprint("Error: ID must be an integer"))))
-		return
+		_, _ = w.Write([]byte("error: id must be an integer"))
 
+		return
 	}
 
-	val, err := user.remove()
-	if err != nil {
+	if userid/1000 < 1 || userid/1000 >= 10 {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte("error: enter valid id. Must be 4 digits only"))
 
+		return
+	}
+
+	val, err := uh.UserStore.remove(userid)
+	if err != nil {
 		if val == "404" {
-
 			w.WriteHeader(http.StatusNotFound)
-
 		} else {
-
 			w.WriteHeader(http.StatusBadRequest)
-
 		}
-		w.Write([]byte(fmt.Sprintf("Error: %v", err)))
+		_, _ = w.Write([]byte(fmt.Sprintf("error: %v", err)))
+
 		return
-
 	}
-
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(val))
-	return
-
+	_, _ = w.Write([]byte(val))
 }
 
-// List receives user id and calls list function to list the record from the database
-func List(w http.ResponseWriter, r *http.Request) {
-
+// List receives user id and calls list function to list the record from the database.
+func (uh *UserHandler) List(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	//extracting the id from the request url
+	// extracting the id from the request url
 	id := mux.Vars(r)["id"]
 
 	var err error
+	var user *User
 
-	user := &User{}
-	user.Id, err = strconv.Atoi(id)
+	userid, err := strconv.Atoi(id)
 
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprint("Error: ID must be an integer")))
+		_, _ = w.Write([]byte(fmt.Sprint("error: id must be an integer")))
+
 		return
 	}
 
-	user, err = user.List()
+	if userid/1000 < 1 || userid/1000 >= 10 {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(fmt.Sprint("error: enter valid id. Must be 4 digits only")))
+
+		return
+	}
+
+	user, err = uh.UserStore.list(userid)
 
 	if err != nil {
-
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf("Error: %v", err)))
-		return
+		_, _ = w.Write([]byte(fmt.Sprintf("error: %v", err)))
 
+		return
 	}
 
 	val, err := json.Marshal(user)
 	if err != nil {
-
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(fmt.Sprintf("Error: %v", err)))
+		_, _ = w.Write([]byte(fmt.Sprintf("error: %v", err)))
+
 		return
-
 	}
-
 	w.WriteHeader(http.StatusOK)
-	w.Write(val)
-
+	_, _ = w.Write(val)
 }
 
-// ListAllUserHandler calls the listall function to fetch all the records from the database
-func ListAll(w http.ResponseWriter, r *http.Request) {
+// ListAll calls the listall function to fetch all the records from the database.
+func (uh *UserHandler) ListAll(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
 	var err error
 
 	var users []*User
 
-	user := User{}
-	users, err = user.listall()
+	users, err = uh.UserStore.listall()
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf("Error: %v", err)))
+		_, _ = w.Write([]byte(fmt.Sprintf("error: %v", err)))
+
+		return
 	}
+
 	val, err := json.Marshal(users)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(fmt.Sprintf("Error: %v", err)))
-	}
-	w.WriteHeader(http.StatusOK)
-	w.Write(val)
+		_, _ = w.Write([]byte(fmt.Sprintf("error: %v", err)))
 
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(val)
 }
 
-// add function
-func (u *User) add() error {
-	//Connecting to database
-	/*
-		s, err := database_conn.NewConnection()
-		if err != nil {
-			return err
-		}
-		defer s.Close()
-	*/
-	if u.Id == 0 {
-		return fmt.Errorf("User Details Required")
-	}
-	if u.Id/1000 < 1 || u.Id/1000 >= 10 {
-		return fmt.Errorf("Enter valid ID. Must be 4 Digits only.")
+// add function.
+func (u *UserStore) add(id int, name string) error {
+
+	_, err := S.Exec(`INSERT INTO users (name,Id) VALUES (?,?)`, name, id)
+	if err != nil {
+		return errors.New("duplicate id. User already exist. Try again")
 	}
 
-	_, err := S.Exec(`INSERT INTO users (name,Id) VALUES (?,?)`, u.Name, u.Id)
-	if err != nil {
-		return fmt.Errorf("Duplicate ID. User Already exist. Try again!")
-	}
 	return nil
 }
 
-// removeBook function
-func (u *User) remove() (string, error) {
-	/*
-		s, err := database_conn.NewConnection()
-		if err != nil {
-			return "", err
-		}
-		defer s.Close()
-	*/
-	if u.Id/1000 < 1 || u.Id/1000 >= 10 {
-		return "", fmt.Errorf("Enter valid ID. Must be 4 Digits only.")
+// removeBook function.
+func (u *UserStore) remove(id int) (string, error) {
+	result, err := S.Exec(`DELETE FROM users WHERE id=?`, id)
+	if err != nil {
+		return "", errors.New("user cannot be removed. User must return the book before being removed")
 	}
 
-	result, err := S.Exec(`DELETE FROM users WHERE id=?`, u.Id)
+	val, err := result.RowsAffected()
 	if err != nil {
-		return "", fmt.Errorf("User cannot be removed. User must return the book before being removed.")
-
-	} else {
-		val, err := result.RowsAffected()
-		if err != nil {
-
-			return "", err
-		} else if val == 0 {
-			return "404", fmt.Errorf("User with this ID does not exist.")
-		}
+		return "", err
+	} else if val == 0 {
+		return "404", errors.New("user with this id does not exist")
 	}
 
 	return "User removed successfully", nil
-
 }
 
-// listBook function
-func (u *User) List() (*User, error) {
-	/*
-		s, err := database_conn.NewConnection()
-		if err != nil {
-			return &User{}, err
-		}
-		defer s.Close()
-	*/
-	if u.Id/1000 < 1 || u.Id/1000 >= 10 {
-		return &User{}, fmt.Errorf("Enter valid ID. Must be 4 Digits only.")
-	}
+// list function.
+func (u *UserStore) list(id int) (*User, error) {
+	var name string
 
-	err := S.QueryRow(`Select id,name from users where id=?`, u.Id).Scan(&u.Id, &u.Name)
+	err := S.QueryRow(`Select name from users where id=?`, id).Scan(&name)
 	if err != nil {
-
-		if err == sql.ErrNoRows {
-
-			return &User{}, errors.New("User with this ID does not exist.")
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errors.New("user with this id does not exist")
 		}
-		return &User{}, err
-	}
-	return u, nil
-}
 
-// listall function
-func (u *User) listall() ([]*User, error) {
-	/*
-		s, err := database_conn.NewConnection()
-		if err != nil {
-			return nil, err
-		}
-		defer s.Close()
-	*/
-
-	books := make([]*User, 0)
-	rows, err := S.Query(`Select id,name from users where deleted_at is null;`)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return []*User{}, errors.New("No Users available.")
-		}
 		return nil, err
 	}
 
+	return &User{
+		name,
+		id,
+	}, nil
+}
+
+// listall function.
+func (us *UserStore) listall() ([]*User, error) {
+	user := make([]*User, 0)
+
+	rows, err := S.Query(`Select id,name from users where deleted_at is null;`)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return []*User{}, errors.New("no users available")
+		}
+
+		return nil, err
+	}
+
+	u := &User{}
 	for rows.Next() {
 		err := rows.Scan(&u.Id, &u.Name)
 		if err != nil {
-			return []*User{}, err
+			return nil, err
 		}
-		books = append(books, u)
+
+		user = append(user, u)
 	}
-	return books, nil
+
+	return user, nil
 }
